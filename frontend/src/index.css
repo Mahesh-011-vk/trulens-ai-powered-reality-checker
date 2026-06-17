@@ -1,0 +1,105 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+  --font-main: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  
+  /* Color Palette (Based on the User's Dark Glassmorphic/Neon Color Palette) */
+  --bg-primary: hsl(260, 87%, 3%);       /* Midnight Black-Purple */
+  --bg-secondary: #283242;     /* Dark Slate Blue */
+  
+  --glass-bg: rgba(40, 50, 66, 0.35);         /* Translucent Dark Slate Blue */
+  --glass-bg-hover: rgba(40, 50, 66, 0.55);   /* Glowing Hover */
+  --glass-border: rgba(76, 67, 105, 0.3);      /* Translucent Slate Purple border */
+  --glass-shadow: 0 8px 32px 0 rgba(6, 10, 16, 0.4); /* Deep Midnight Shadow */
+  
+  --dark-bg: #283242;          /* Slate Blue base for dark contrasts */
+  --dark-border: rgba(76, 67, 105, 0.5);
+  --dark-text: #ffffff;
+  
+  --text-primary: #f4f4f5;     /* Pure Off-White text */
+  --text-muted: #4EA3BA;       /* Ocean Blue/Cyan Gray */
+  
+  --accent-blue: #48F2FB;      /* Bright Cyan */
+  --accent-blue-glow: rgba(72, 242, 251, 0.15);
+  --accent-purple: #E867EA;    /* Vibrant Pink */
+  
+  --status-real: #48F2FB;      /* Bright Cyan for Real */
+  --status-real-bg: rgba(72, 242, 251, 0.15);
+  --status-fake: #E867EA;      /* Vibrant Pink for Fake */
+  --status-fake-bg: rgba(232, 103, 234, 0.15);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-main);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* Liquid glass utility class */
+.liquid-glass {
+  background: rgba(255, 255, 255, 0.01);
+  background-blend-mode: luminosity;
+  backdrop-filter: blur(4px);
+  border: none;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+.liquid-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.4px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.15) 20%, rgba(255,255,255,0) 40%, rgba(255,255,255,0) 60%, rgba(255,255,255,0.15) 80%, rgba(255,255,255,0.45) 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Custom Scrollbar for premium finish */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* Basic utility animations */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
