@@ -207,7 +207,11 @@ Since the project has a monorepo structure with a React frontend and Python back
 4. Click **Deploy**. The app will build and run with clean URL routes and SPA client routing via the pre-configured [vercel.json](file:///Users/maheshs/fakenewsdet/frontend/vercel.json).
 
 #### 🗄️ Deploy Backend
-The FastAPI backend can be hosted on platforms like [Railway](https://railway.app), [Render](https://render.com), or [Fly.io](https://fly.io):
+You can deploy the FastAPI backend immediately to **Render** using our one-click blueprint button:
+
+[![Deploy to Render](https://render.com/images/deploy-to-render.svg)](https://render.com/deploy?repo=https://github.com/Mahesh-011-vk/trulens-ai-powered-reality-checker)
+
+Alternatively, host the backend on platforms like [Railway](https://railway.app) or [Fly.io](https://fly.io):
 - **Start Command**: `uvicorn app:app --host 0.0.0.0 --port $PORT`
 - **Environment Variables**: Make sure to set `NEWSAPI_KEY`, `RESEND_API_KEY`, `GEMINI_API_KEY`, and `GOOGLE_FACTCHECK_API_KEY`.
 
