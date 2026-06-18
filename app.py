@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
@@ -145,7 +145,10 @@ class EmailRequest(BaseModel):
 
 # ── Endpoints ──────────────────────────────────────────────────────────────
 
-@app.get("/health", tags=["System"])
+router = APIRouter()
+
+
+@router.get("/health", tags=["System"])
 async def health_check():
     """Live health check — returns status of all system components."""
     return {
@@ -159,7 +162,7 @@ async def health_check():
     }
 
 
-@app.get("/stats", tags=["Analytics"])
+@router.get("/stats", tags=["Analytics"])
 async def get_stats():
     """Returns aggregate statistics from the analysis history."""
     try:
@@ -168,7 +171,7 @@ async def get_stats():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/analyze", response_model=NewsResponse, tags=["Analysis"])
+@router.post("/analyze", response_model=NewsResponse, tags=["Analysis"])
 async def analyze_news(request: NewsRequest):
     """
     Main analysis endpoint.
@@ -340,7 +343,7 @@ async def analyze_news(request: NewsRequest):
     )
 
 
-@app.get("/history", tags=["History"])
+@router.get("/history", tags=["History"])
 async def fetch_history(limit: int = 50):
     try:
         return database.get_history(limit)
@@ -348,7 +351,7 @@ async def fetch_history(limit: int = 50):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.delete("/history", tags=["History"])
+@router.delete("/history", tags=["History"])
 async def clear_history():
     try:
         database.delete_all_predictions()
@@ -357,7 +360,7 @@ async def clear_history():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.delete("/history/{pred_id}", tags=["History"])
+@router.delete("/history/{pred_id}", tags=["History"])
 async def delete_single_history(pred_id: int):
     try:
         database.delete_prediction(pred_id)
@@ -389,7 +392,7 @@ def _markdown_to_html(md_text: str) -> str:
     return '\n'.join(lines)
 
 
-@app.post("/send-report", tags=["Reports"])
+@router.post("/send-report", tags=["Reports"])
 async def send_report(request: EmailRequest):
     resend_key = os.environ.get("RESEND_API_KEY", "re_8myMpH56_3xrDUDSSFfhE7191Gzsj5nx4")
     from datetime import datetime
@@ -453,3 +456,7 @@ async def send_report(request: EmailRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+app.include_router(router)
+app.include_router(router, prefix="/api")
