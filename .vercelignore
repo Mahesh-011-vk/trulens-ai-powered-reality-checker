@@ -1,3 +1,7 @@
+# Ignore node modules (very heavy, Vercel installs them on build)
+node_modules/
+frontend/node_modules/
+
 # Ignore python virtualenv
 venv/
 venv
