@@ -738,16 +738,50 @@ def generate_local_explanation(text, prediction, confidence, model_type, sources
 # GEMINI-POWERED EXPLANATION (primary)
 # ─────────────────────────────────────────────────────────────
 
+def _call_gemini_rest(prompt: str, response_mime_type: str = None) -> str:
+    import requests
+    import os
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise Exception("Gemini API key is missing. Please add GEMINI_API_KEY in environment variables.")
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    headers = {
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {
+                        "text": prompt
+                    }
+                ]
+            }
+        ]
+    }
+    if response_mime_type:
+        payload["generationConfig"] = {
+            "responseMimeType": response_mime_type
+        }
+
+    res = requests.post(url, json=payload, headers=headers, timeout=30)
+    if res.status_code != 200:
+        raise Exception(f"Gemini API returned status {res.status_code}: {res.text}")
+
+    data = res.json()
+    try:
+        return data["candidates"][0]["content"]["parts"][0]["text"]
+    except (KeyError, IndexError) as e:
+        raise Exception(f"Failed to parse Gemini response: {e}. Response: {data}")
+
+
 def generate_explanation(text, prediction, confidence, model_type, sources=None):
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         return generate_local_explanation(text, prediction, confidence, model_type, sources)
 
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        model_ai = genai.GenerativeModel("gemini-1.5-flash")
-
         # Build sources context for the prompt
         sources_context = ""
         fact_links      = ""
@@ -817,8 +851,8 @@ State clearly **why** this claim is {prediction}. Be direct. Reference specific 
 {fact_links}
 """
 
-        response = model_ai.generate_content(prompt)
-        return response.text
+        response_text = _call_gemini_rest(prompt)
+        return response_text
 
     except Exception as e:
         print(f"[Gemini] API failed: {e}. Using local fallback.")
@@ -828,14 +862,11 @@ State clearly **why** this claim is {prediction}. Be direct. Reference specific 
 def classify_and_explain_with_gemini(text: str, model_type: str, sources=None) -> dict:
     import json
     import os
-    import google.generativeai as genai
 
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise Exception("Vercel Serverless: Gemini API key is missing. Please add GEMINI_API_KEY in environment variables.")
 
-    genai.configure(api_key=api_key)
-    
     sources_context = ""
     if sources:
         sources_context = "\nEvidence from search:\n" + "\n".join([
@@ -867,15 +898,11 @@ Return your response strictly in the following JSON format:
 }}
 """
 
-    model_ai = genai.GenerativeModel("gemini-1.5-flash")
-    res = model_ai.generate_content(
-        prompt,
-        generation_config={"response_mime_type": "application/json"}
-    )
+    res_text = _call_gemini_rest(prompt, response_mime_type="application/json")
     
     try:
-        data = json.loads(res.text)
+        data = json.loads(res_text)
         return data
     except Exception as e:
-        print(f"[Gemini Classify] JSON parse error: {e}. Raw: {res.text}")
+        print(f"[Gemini Classify] JSON parse error: {e}. Raw: {res_text}")
         raise e
