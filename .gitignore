@@ -45,3 +45,8 @@ frontend/.env.local
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Large data files
+data/*.csv
+data/*.tsv
+data/*.json
