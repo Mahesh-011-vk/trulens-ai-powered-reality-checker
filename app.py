@@ -3,7 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from typing import List, Optional
-import joblib
+try:
+    import joblib
+    HAS_JOBLIB = True
+except ImportError:
+    HAS_JOBLIB = False
 import os
 import database
 try:
@@ -43,11 +47,11 @@ async def lifespan(app: FastAPI):
     global model, cnn_model, cnn_processor
 
     # Load Classical ML Model
-    if os.path.exists(model_path):
+    if HAS_JOBLIB and os.path.exists(model_path):
         model = joblib.load(model_path)
         print(f"[Startup] ML Model loaded from {model_path}")
     else:
-        print(f"[Startup] WARNING: ML Model not found at {model_path}. Run train.py first.")
+        print(f"[Startup] WARNING: ML Model not found or joblib missing. Using Vercel Serverless Fallback.")
 
     # Load CNN Model
     if HAS_TORCH:
@@ -177,6 +181,60 @@ async def analyze_news(request: NewsRequest):
     """
     model_type = request.model_type.lower()
     loop = asyncio.get_running_loop()
+
+    # ── Step 0: Check if running on Vercel Serverless without local models ──
+    if model is None and cnn_model is None:
+        try:
+            print("[Analyze] No local models loaded. Running Vercel Serverless Gemini analysis...")
+            # Step 1: Fetch Web Sources (needed for Gemini context)
+            sources_raw = await loop.run_in_executor(
+                executor,
+                explanation_engine.fetch_web_sources,
+                request.text,
+            )
+            # Step 2: Query Gemini to classify and explain in one request
+            gemini_res = await loop.run_in_executor(
+                executor,
+                lambda: explanation_engine.classify_and_explain_with_gemini(
+                    request.text, model_type, sources_raw
+                )
+            )
+            
+            prediction = gemini_res.get("prediction", "FAKE")
+            confidence = gemini_res.get("confidence", {"REAL": 0.5, "FAKE": 0.5})
+            explanation = gemini_res.get("explanation", "")
+            
+            # Persist to SQLite
+            database.save_prediction(
+                text=request.text,
+                prediction=prediction,
+                confidence_real=confidence.get('REAL', 0.5),
+                confidence_fake=confidence.get('FAKE', 0.5),
+                explanation=explanation,
+            )
+            
+            # Format sources output
+            sources_out = [
+                SourceItem(
+                    name=s.get("name", ""),
+                    snippet=s.get("snippet", ""),
+                    url=s.get("url", ""),
+                    source_type=s.get("source_type", "web_search"),
+                    rating=s.get("rating"),
+                )
+                for s in sources_raw
+            ]
+            
+            return NewsResponse(
+                text=request.text,
+                prediction=prediction,
+                confidence=confidence,
+                explanation=explanation,
+                sources=sources_out,
+            )
+        except Exception as e:
+            print(f"[Analyze] Serverless Gemini analysis failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Serverless classification failed: {e}")
 
     # ── Step 1: Model Inference ────────────────────────────────────────────
     if model_type == "cnn":

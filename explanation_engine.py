@@ -823,3 +823,59 @@ State clearly **why** this claim is {prediction}. Be direct. Reference specific 
     except Exception as e:
         print(f"[Gemini] API failed: {e}. Using local fallback.")
         return generate_local_explanation(text, prediction, confidence, model_type, sources)
+
+
+def classify_and_explain_with_gemini(text: str, model_type: str, sources=None) -> dict:
+    import json
+    import os
+    import google.generativeai as genai
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise Exception("Vercel Serverless: Gemini API key is missing. Please add GEMINI_API_KEY in environment variables.")
+
+    genai.configure(api_key=api_key)
+    
+    sources_context = ""
+    if sources:
+        sources_context = "\nEvidence from search:\n" + "\n".join([
+            f"- {s['name']} (rating: {s.get('rating')}): {s['snippet']} (url: {s['url']})"
+            for s in sources
+        ])
+
+    prompt = f"""You are a fact-checking assistant. Analyze the following news claim:
+Claim: "{text}"
+{sources_context}
+
+Based on the claim, linguistic markers, and any search evidence, you must:
+1. Classify the claim as FAKE or REAL.
+2. Estimate the confidence probability of FAKE and REAL classifications (must sum to 1.0).
+3. Generate a detailed, professional fact-check markdown explanation. The explanation should have sections:
+   - "### 🔍 Verdict:": State clearly whether the claim is FAKE or REAL and why.
+   - "### 📰 Evidence Analysis:": List and analyze the provided sources and search evidence.
+   - "### 🧠 How the AI Model Detected This:": Explain the linguistic or style indicators found.
+   - "### 🌐 Real-Time Fact-Check Sources:": Provide links to search verification.
+
+Return your response strictly in the following JSON format:
+{{
+  "prediction": "REAL" or "FAKE",
+  "confidence": {{
+    "REAL": 0.85,
+    "FAKE": 0.15
+  }},
+  "explanation": "markdown content here"
+}}
+"""
+
+    model_ai = genai.GenerativeModel("gemini-1.5-flash")
+    res = model_ai.generate_content(
+        prompt,
+        generation_config={"response_mime_type": "application/json"}
+    )
+    
+    try:
+        data = json.loads(res.text)
+        return data
+    except Exception as e:
+        print(f"[Gemini Classify] JSON parse error: {e}. Raw: {res.text}")
+        raise e
