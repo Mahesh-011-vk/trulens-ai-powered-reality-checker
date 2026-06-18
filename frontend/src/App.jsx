@@ -405,6 +405,29 @@ function App() {
             {/* Left Main Column */}
             <div className="grid-left-col">
               
+              {/* API Offline Warning Banner */}
+              {backendOnline === false && (
+                <div style={{
+                  padding: '12px 16px',
+                  background: 'rgba(232, 103, 234, 0.1)',
+                  border: '1px solid rgba(232, 103, 234, 0.25)',
+                  borderRadius: '12px',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  color: '#f3cbf4',
+                  fontSize: '0.82rem',
+                  fontWeight: '600',
+                  lineHeight: '1.4'
+                }}>
+                  <span style={{ fontSize: '1.2rem', textShadow: '0 0 6px var(--accent-purple)' }}>⚠️</span>
+                  <span>
+                    <strong>Running in Offline Sandbox Mode.</strong> The Python backend server is offline. Claims will be evaluated using client-side heuristic engines.
+                  </span>
+                </div>
+              )}
+
               {/* Timeline/Model Settings Row */}
               <div className="model-selector-container">
                 <span className="section-label">Classifier Engine</span>
