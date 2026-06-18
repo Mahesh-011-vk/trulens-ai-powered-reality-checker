@@ -1,0 +1,29 @@
+# Ignore python virtualenv
+venv/
+venv
+.venv/
+.venv
+
+# Ignore backend source files
+app.py
+database.py
+cnn_model.py
+explanation_engine.py
+train.py
+train_cnn.py
+predict.py
+requirements.txt
+client.py
+run_test.py
+test_heuristics.py
+
+# Ignore backend directories & database
+models/
+data/
+render.yaml
+history.db
+
+# Ignore temp / IDE files
+.DS_Store
+.git
+.vscode

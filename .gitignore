@@ -47,3 +47,4 @@ frontend/.env.local
 data/*.csv
 data/*.tsv
 data/*.json
+.vercel
