@@ -57,7 +57,7 @@ def get_history(limit=50):
                 "REAL": row[3],
                 "FAKE": row[4]
             },
-            "timestamp": row[5],
+            "timestamp": f"{row[5].replace(' ', 'T')}Z" if row[5] else None,
             "explanation": row[6] if len(row) > 6 else ""
         })
     return history

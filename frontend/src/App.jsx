@@ -279,10 +279,26 @@ function App() {
     }
   }
 
-  const currentDate = new Date().toLocaleDateString('en-US', {
+  const [currentDateTime, setCurrentDateTime] = useState(new Date())
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentDateTime(new Date())
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [])
+
+  const currentDate = currentDateTime.toLocaleDateString('en-US', {
     month: 'long',
     day: 'numeric',
     year: 'numeric'
+  })
+
+  const currentTime = currentDateTime.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
   })
 
   return (
@@ -353,7 +369,7 @@ function App() {
         <header className="content-header">
           <div className="header-left">
             <h1>Reality Checker</h1>
-            <span className="current-date">{currentDate}</span>
+            <span className="current-date">{currentDate} • {currentTime}</span>
           </div>
 
           <div className="header-actions">
