@@ -194,6 +194,23 @@ npm run dev
 
 Open **http://localhost:5173** in your browser.
 
+### 6. Production Deployment
+
+Since the project has a monorepo structure with a React frontend and Python backend, deploy them separately:
+
+#### 🌐 Deploy Frontend (Vercel)
+1. Import your repository to [Vercel](https://vercel.com).
+2. In the **Configure Project** step, open **Build and Deployment Settings**:
+   - Set **Root Directory** to `frontend` (Vercel will auto-detect Vite).
+3. Under **Environment Variables**, add:
+   - `VITE_API_URL`: The HTTP URL of your deployed FastAPI backend (e.g., `https://your-backend.railway.app`).
+4. Click **Deploy**. The app will build and run with clean URL routes and SPA client routing via the pre-configured [vercel.json](file:///Users/maheshs/fakenewsdet/frontend/vercel.json).
+
+#### 🗄️ Deploy Backend
+The FastAPI backend can be hosted on platforms like [Railway](https://railway.app), [Render](https://render.com), or [Fly.io](https://fly.io):
+- **Start Command**: `uvicorn app:app --host 0.0.0.0 --port $PORT`
+- **Environment Variables**: Make sure to set `NEWSAPI_KEY`, `RESEND_API_KEY`, `GEMINI_API_KEY`, and `GOOGLE_FACTCHECK_API_KEY`.
+
 ---
 
 ## 🔑 Optional API Keys
