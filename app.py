@@ -6,8 +6,14 @@ from typing import List, Optional
 import joblib
 import os
 import database
-import torch
-from cnn_model import CNNClassifier, CNNTextProcessor
+try:
+    import torch
+    from cnn_model import CNNClassifier
+    HAS_TORCH = True
+except ImportError:
+    HAS_TORCH = False
+
+from cnn_model import CNNTextProcessor, NumPyCNNClassifier
 import explanation_engine
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
@@ -44,19 +50,31 @@ async def lifespan(app: FastAPI):
         print(f"[Startup] WARNING: ML Model not found at {model_path}. Run train.py first.")
 
     # Load CNN Model
-    if os.path.exists(cnn_model_path) and os.path.exists(cnn_vocab_path):
-        try:
-            cnn_processor = CNNTextProcessor(vocab_path=cnn_vocab_path)
-            cnn_model = CNNClassifier(vocab_size=cnn_processor.vocab_size)
-            cnn_model.load_state_dict(
-                torch.load(cnn_model_path, map_location=torch.device('cpu'), weights_only=True)
-            )
-            cnn_model.eval()
-            print(f"[Startup] CNN Model loaded from {cnn_model_path}")
-        except Exception as e:
-            print(f"[Startup] ERROR loading CNN model: {e}")
+    if HAS_TORCH:
+        if os.path.exists(cnn_model_path) and os.path.exists(cnn_vocab_path):
+            try:
+                cnn_processor = CNNTextProcessor(vocab_path=cnn_vocab_path)
+                cnn_model = CNNClassifier(vocab_size=cnn_processor.vocab_size)
+                cnn_model.load_state_dict(
+                    torch.load(cnn_model_path, map_location=torch.device('cpu'), weights_only=True)
+                )
+                cnn_model.eval()
+                print(f"[Startup] PyTorch CNN Model loaded from {cnn_model_path}")
+            except Exception as e:
+                print(f"[Startup] ERROR loading PyTorch CNN model: {e}")
+        else:
+            print(f"[Startup] WARNING: CNN Model not found at {cnn_model_path}. Run train_cnn.py first.")
     else:
-        print(f"[Startup] WARNING: CNN Model not found. Run train_cnn.py first.")
+        cnn_weights_path = 'models/cnn_weights.json'
+        if os.path.exists(cnn_weights_path) and os.path.exists(cnn_vocab_path):
+            try:
+                cnn_processor = CNNTextProcessor(vocab_path=cnn_vocab_path)
+                cnn_model = NumPyCNNClassifier(cnn_weights_path)
+                print(f"[Startup] NumPy Fallback CNN Model loaded from {cnn_weights_path}")
+            except Exception as e:
+                print(f"[Startup] ERROR loading NumPy CNN model: {e}")
+        else:
+            print(f"[Startup] WARNING: NumPy CNN weights not found at {cnn_weights_path}.")
 
     database.init_db()
     print("[Startup] Database initialized.")
@@ -169,10 +187,13 @@ async def analyze_news(request: NewsRequest):
             )
         try:
             seq = cnn_processor.text_to_sequence(request.text)
-            input_tensor = torch.tensor([seq], dtype=torch.long)
-            with torch.no_grad():
-                logits = cnn_model(input_tensor)
-                probs = torch.softmax(logits, dim=1).numpy()[0]
+            if HAS_TORCH:
+                input_tensor = torch.tensor([seq], dtype=torch.long)
+                with torch.no_grad():
+                    logits = cnn_model(input_tensor)
+                    probs = torch.softmax(logits, dim=1).numpy()[0]
+            else:
+                probs = cnn_model.predict(seq)
             confidence = {
                 "FAKE": round(float(probs[0]), 4),
                 "REAL": round(float(probs[1]), 4),

@@ -2,7 +2,19 @@ import sqlite3
 import json
 from datetime import datetime
 
+import os
+import shutil
+
 DB_FILE = "history.db"
+
+# Vercel Serverless environment compatibility (Writable filesystem fallback)
+if os.environ.get("VERCEL"):
+    DB_FILE = "/tmp/history.db"
+    if not os.path.exists(DB_FILE) and os.path.exists("history.db"):
+        try:
+            shutil.copy("history.db", DB_FILE)
+        except Exception:
+            pass
 
 def init_db():
     conn = sqlite3.connect(DB_FILE)

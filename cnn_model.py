@@ -1,32 +1,88 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import re
 import json
 import os
+import numpy as np
 
-class CNNClassifier(nn.Module):
-    def __init__(self, vocab_size, embedding_dim=50, num_filters=64, kernel_size=3, num_classes=2):
-        super(CNNClassifier, self).__init__()
-        # Padding index is 0 (<pad>)
-        self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=0)
-        self.conv = nn.Conv1d(in_channels=embedding_dim, out_channels=num_filters, kernel_size=kernel_size, padding=1)
-        self.dropout = nn.Dropout(0.5)
-        self.fc = nn.Linear(num_filters, num_classes)
+try:
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    HAS_TORCH = True
+except ImportError:
+    HAS_TORCH = False
 
-    def forward(self, x):
-        # x: [batch_size, seq_len]
-        embedded = self.embedding(x) # [batch_size, seq_len, embedding_dim]
-        embedded = embedded.transpose(1, 2) # [batch_size, embedding_dim, seq_len] (expected format for Conv1d)
+if HAS_TORCH:
+    class CNNClassifier(nn.Module):
+        def __init__(self, vocab_size, embedding_dim=50, num_filters=64, kernel_size=3, num_classes=2):
+            super(CNNClassifier, self).__init__()
+            # Padding index is 0 (<pad>)
+            self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=0)
+            self.conv = nn.Conv1d(in_channels=embedding_dim, out_channels=num_filters, kernel_size=kernel_size, padding=1)
+            self.dropout = nn.Dropout(0.5)
+            self.fc = nn.Linear(num_filters, num_classes)
+
+        def forward(self, x):
+            # x: [batch_size, seq_len]
+            embedded = self.embedding(x) # [batch_size, seq_len, embedding_dim]
+            embedded = embedded.transpose(1, 2) # [batch_size, embedding_dim, seq_len] (expected format for Conv1d)
+            
+            conved = F.relu(self.conv(embedded)) # [batch_size, num_filters, seq_len]
+            
+            # Max pool over the entire sequence length
+            pooled = F.adaptive_max_pool1d(conved, 1).squeeze(2) # [batch_size, num_filters]
+            
+            dropped = self.dropout(pooled)
+            logits = self.fc(dropped) # [batch_size, num_classes]
+            return logits
+
+class NumPyCNNClassifier:
+    def __init__(self, weights_path):
+        with open(weights_path, 'r', encoding='utf-8') as f:
+            weights = json.load(f)
+        self.embedding_weight = np.array(weights['embedding.weight'])  # [vocab_size, embedding_dim]
+        self.conv_weight = np.array(weights['conv.weight'])  # [num_filters, embedding_dim, kernel_size]
+        self.conv_bias = np.array(weights['conv.bias'])  # [num_filters]
+        self.fc_weight = np.array(weights['fc.weight'])  # [num_classes, num_filters]
+        self.fc_bias = np.array(weights['fc.bias'])  # [num_classes]
+
+    def predict(self, x):
+        # x is a list of token indices of shape [seq_len]
+        x = np.array(x, dtype=np.int32)
         
-        conved = F.relu(self.conv(embedded)) # [batch_size, num_filters, seq_len]
+        # 1. Embedding lookup -> [seq_len, embedding_dim]
+        embedded = self.embedding_weight[x]
         
-        # Max pool over the entire sequence length
-        pooled = F.adaptive_max_pool1d(conved, 1).squeeze(2) # [batch_size, num_filters]
+        # Transpose to [embedding_dim, seq_len] for Conv1D
+        embedded = embedded.T  # shape [50, 200]
         
-        dropped = self.dropout(pooled)
-        logits = self.fc(dropped) # [batch_size, num_classes]
-        return logits
+        # 2. 1D Convolution with same padding (padding=1, kernel_size=3)
+        num_filters, embedding_dim, kernel_size = self.conv_weight.shape
+        seq_len = embedded.shape[1]
+        
+        padded_input = np.pad(embedded, ((0, 0), (1, 1)), mode='constant', constant_values=0)
+        
+        conved = np.zeros((num_filters, seq_len))
+        for f in range(num_filters):
+            filter_w = self.conv_weight[f]
+            bias = self.conv_bias[f]
+            for t in range(seq_len):
+                window = padded_input[:, t:t+kernel_size]
+                conved[f, t] = np.sum(window * filter_w) + bias
+                
+        # 3. ReLU
+        conved = np.maximum(0, conved)
+        
+        # 4. Global Max Pooling -> shape [num_filters]
+        pooled = np.max(conved, axis=1)
+        
+        # 5. Fully Connected
+        logits = np.dot(self.fc_weight, pooled) + self.fc_bias
+        
+        # Softmax to get probabilities
+        exp_logits = np.exp(logits - np.max(logits))
+        probs = exp_logits / np.sum(exp_logits)
+        
+        return probs
 
 class CNNTextProcessor:
     def __init__(self, vocab_path=None, max_len=200):
