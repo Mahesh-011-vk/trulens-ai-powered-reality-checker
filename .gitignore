@@ -14,10 +14,7 @@ env/
 .env
 .venv
 
-# Models (large binary files — train locally)
-models/*.pkl
-models/*.pth
-models/*.json
+# Models folder contains small pre-trained models (< 2MB each), safe to commit
 
 # Database
 *.db
