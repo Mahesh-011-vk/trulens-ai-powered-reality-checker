@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ main ]
 
+# Note: Training datasets (data/*.csv) are gitignored and not required for CI.
+# Models (models/*.pkl, models/*.pth) are also gitignored.
+# CI only checks code quality and frontend build correctness.
+
 jobs:
   backend-lint:
     name: Backend — Lint & Syntax Check
@@ -28,7 +32,7 @@ jobs:
         run: |
           python -m pyflakes app.py explanation_engine.py database.py cnn_model.py train.py train_cnn.py
 
-  frontend-lint:
+  frontend-build:
     name: Frontend — Install & Build Check
     runs-on: ubuntu-latest
 
