@@ -62,6 +62,48 @@ def get_history(limit=50):
         })
     return history
 
+def get_stats():
+    """Return aggregate statistics for the dashboard."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM predictions")
+    total = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COUNT(*) FROM predictions WHERE prediction = 'FAKE'")
+    fake_count = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COUNT(*) FROM predictions WHERE prediction = 'REAL'")
+    real_count = cursor.fetchone()[0]
+
+    cursor.execute("""
+        SELECT AVG(
+            CASE WHEN prediction = 'FAKE' THEN confidence_fake ELSE confidence_real END
+        ) FROM predictions
+    """)
+    avg_conf_raw = cursor.fetchone()[0]
+    avg_confidence = round((avg_conf_raw or 0) * 100, 1)
+
+    cursor.execute("""
+        SELECT prediction, COUNT(*) as cnt
+        FROM predictions
+        GROUP BY prediction
+        ORDER BY cnt DESC
+        LIMIT 1
+    """)
+    top_row = cursor.fetchone()
+    most_common = top_row[0] if top_row else "N/A"
+
+    conn.close()
+
+    return {
+        "total": total,
+        "fake": fake_count,
+        "real": real_count,
+        "fake_ratio": round((fake_count / total * 100), 1) if total > 0 else 0.0,
+        "avg_confidence": avg_confidence,
+        "most_common_verdict": most_common,
+    }
+
 def delete_all_predictions():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()

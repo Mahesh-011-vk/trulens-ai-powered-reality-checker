@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import './App.css'
+import * as api from './api.js'
 
 // Inline SVG Icons for clean rendering without external dependencies
 const ICONS = {
@@ -95,6 +96,8 @@ function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [email, setEmail] = useState('')
   const [emailStatus, setEmailStatus] = useState('')
+  const [backendOnline, setBackendOnline] = useState(null) // null=checking, true=online, false=offline
+  const [stats, setStats] = useState({ total: 0, fake: 0, real: 0, fake_ratio: 0, avg_confidence: 0 })
 
   const videoRef = useRef(null);
 
@@ -158,112 +161,102 @@ function App() {
     };
   }, []);
 
-  const handleSendEmail = async () => {
-    if (!email.trim() || !result) return;
-    setEmailStatus('Sending...')
-    try {
-      const response = await fetch('http://localhost:8000/send-report', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          to_email: email,
-          text: result.text,
-          prediction: result.prediction,
-          confidence: result.confidence,
-          explanation: result.explanation
-        })
-      });
-      if (response.ok) {
-        setEmailStatus('Report sent!');
-        setEmail('');
-        setTimeout(() => setEmailStatus(''), 5000);
-      } else {
-        const errData = await response.json();
-        setEmailStatus(`Error: Check Resend onboarding constraints`);
+  // ── Health check: poll every 15s ─────────────────────────────────────────
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        await api.fetchHealth()
+        setBackendOnline(true)
+      } catch {
+        setBackendOnline(false)
       }
-    } catch (err) {
-      setEmailStatus('Connection error.');
-      console.error(err);
     }
-  };
+    checkHealth()
+    const id = setInterval(checkHealth, 15000)
+    return () => clearInterval(id)
+  }, [])
 
-  const handleClearHistory = async () => {
-    if (!window.confirm("Are you sure you want to clear all prediction history?")) return;
+  // ── Load history + stats on mount ────────────────────────────────────────
+  const loadHistory = async () => {
     try {
-      const response = await fetch('http://localhost:8000/history', {
-        method: 'DELETE'
-      });
-      if (response.ok) {
-        setHistory([]);
-        setResult(null);
-      }
+      const data = await api.fetchHistory()
+      setHistory(data)
     } catch (err) {
-      console.error("Failed to clear history:", err);
+      console.error('Failed to fetch history:', err)
     }
-  };
+  }
 
-  const handleDeleteItem = async (e, id) => {
-    e.stopPropagation(); // Avoid item row click triggers
+  const loadStats = async () => {
     try {
-      const response = await fetch(`http://localhost:8000/history/${id}`, {
-        method: 'DELETE'
-      });
-      if (response.ok) {
-        setHistory(prev => prev.filter(item => item.id !== id));
-        if (result && result.id === id) {
-          setResult(null);
-        }
-      }
+      const data = await api.fetchStats()
+      setStats(data)
     } catch (err) {
-      console.error("Failed to delete item:", err);
-    }
-  };
-
-  // Load history on startup
-  const fetchHistory = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/history')
-      if (response.ok) {
-        const data = await response.json()
-        setHistory(data)
-      }
-    } catch (err) {
-      console.error("Failed to fetch history:", err)
+      console.error('Failed to fetch stats:', err)
     }
   }
 
   useEffect(() => {
-    fetchHistory()
+    loadHistory()
+    loadStats()
   }, [])
+
+  const handleSendEmail = async () => {
+    if (!email.trim() || !result) return
+    setEmailStatus('Sending...')
+    try {
+      await api.sendReport({
+        to_email: email,
+        text: result.text,
+        prediction: result.prediction,
+        confidence: result.confidence,
+        explanation: result.explanation,
+      })
+      setEmailStatus('Report sent!')
+      setEmail('')
+      setTimeout(() => setEmailStatus(''), 5000)
+    } catch (err) {
+      setEmailStatus('Error: ' + (err.message || 'Send failed'))
+      console.error(err)
+    }
+  }
+
+  const handleClearHistory = async () => {
+    if (!window.confirm('Are you sure you want to clear all prediction history?')) return
+    try {
+      await api.clearHistory()
+      setHistory([])
+      setResult(null)
+      loadStats()
+    } catch (err) {
+      console.error('Failed to clear history:', err)
+    }
+  }
+
+  const handleDeleteItem = async (e, id) => {
+    e.stopPropagation()
+    try {
+      await api.deletePrediction(id)
+      setHistory(prev => prev.filter(item => item.id !== id))
+      if (result && result.id === id) setResult(null)
+      loadStats()
+    } catch (err) {
+      console.error('Failed to delete item:', err)
+    }
+  }
 
   const handleAnalyze = async () => {
     if (!text.trim()) return
-    
     setLoading(true)
     setError(null)
     setResult(null)
     setEmailStatus('')
-
     try {
-      const response = await fetch('http://localhost:8000/analyze', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ text, model_type: modelType })
-      })
-
-      if (!response.ok) {
-        throw new Error(`Server returned error: ${response.statusText}`)
-      }
-
-      const data = await response.json()
+      const data = await api.analyzeNews(text, modelType)
       setResult(data)
-      fetchHistory()
+      loadHistory()
+      loadStats()
     } catch (err) {
-      setError("Failed to connect to the analysis engine. Please ensure the backend is running.")
+      setError(err.message || 'Failed to connect to the analysis engine. Please ensure the backend is running.')
       console.error(err)
     } finally {
       setLoading(false)
@@ -285,18 +278,6 @@ function App() {
       })
     }
   }
-
-  // Calculate statistics from history
-  const totalScans = history.length
-  const fakeScans = history.filter(h => h.prediction === 'FAKE').length
-  const realScans = totalScans - fakeScans
-  const fakeRatio = totalScans > 0 ? ((fakeScans / totalScans) * 100).toFixed(0) : 0
-  const avgConfidence = totalScans > 0 
-    ? (history.reduce((acc, curr) => {
-        const conf = curr.prediction === 'FAKE' ? curr.confidence.FAKE : curr.confidence.REAL;
-        return acc + (conf || 0);
-      }, 0) / totalScans * 100).toFixed(1)
-    : "0.0"
 
   const currentDate = new Date().toLocaleDateString('en-US', {
     month: 'long',
@@ -383,6 +364,17 @@ function App() {
             <div className="search-bar">
               {ICONS.search}
               <input type="text" placeholder="Type searching..." />
+            </div>
+            {/* Backend health indicator */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px',
+              background: 'rgba(255,255,255,0.06)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', display: 'inline-block',
+                background: backendOnline === null ? '#f59e0b' : backendOnline ? '#22c55e' : '#ef4444',
+                boxShadow: backendOnline ? '0 0 6px #22c55e' : backendOnline === false ? '0 0 6px #ef4444' : '0 0 6px #f59e0b',
+                flexShrink: 0 }} />
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-primary)', opacity: 0.8 }}>
+                {backendOnline === null ? 'Connecting...' : backendOnline ? 'API Online' : 'API Offline'}
+              </span>
             </div>
             <div className="bell-icon">
               <span>🔔</span>
@@ -482,46 +474,62 @@ function App() {
                     </div>
                   )}
 
-                  {/* Resend Email Report Panel */}
+                  {/* Real-time web sources from backend */}
+                  {result.sources && result.sources.length > 0 && (
+                    <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid rgba(0,0,0,0.08)' }}>
+                      <h3 style={{ fontSize: '0.95rem', fontWeight: '800', marginBottom: '10px', color: 'var(--text-primary)' }}>🌐 Live Verification Sources</h3>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        {result.sources.map((src, i) => (
+                          <a key={i} href={src.url} target="_blank" rel="noopener noreferrer"
+                            style={{ display: 'block', padding: '10px 12px', borderRadius: '10px',
+                              background: 'rgba(255,255,255,0.45)', border: '1px solid rgba(0,0,0,0.06)',
+                              textDecoration: 'none', transition: 'background 0.15s' }}
+                            onMouseEnter={e => e.currentTarget.style.background='rgba(255,255,255,0.7)'}
+                            onMouseLeave={e => e.currentTarget.style.background='rgba(255,255,255,0.45)'}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
+                              <span style={{ fontSize: '0.78rem', fontWeight: '800', color: 'var(--accent-blue)' }}>{src.name}</span>
+                              {src.rating && (
+                                <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 7px', borderRadius: '6px',
+                                  background: 'rgba(0,0,0,0.07)', color: 'var(--text-primary)', textTransform: 'uppercase' }}>
+                                  {src.rating}
+                                </span>
+                              )}
+                            </div>
+                            <p style={{ margin: 0, fontSize: '0.76rem', color: 'var(--text-primary)', opacity: 0.75, lineHeight: 1.4,
+                              overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                              {src.snippet}
+                            </p>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Email Report Panel */}
                   <div className="email-report-section" style={{ marginTop: '20px', paddingTop: '16px', borderTop: '1px solid rgba(0, 0, 0, 0.08)' }}>
                     <h3 style={{ fontSize: '0.95rem', fontWeight: '800', marginBottom: '6px', color: 'var(--text-primary)' }}>Email Verification Report</h3>
                     <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '10px' }}>Send news verification report to inbox via Resend</p>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <input 
-                        type="email" 
-                        placeholder="recipient@example.com" 
+                      <input
+                        type="email"
+                        placeholder="recipient@example.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        style={{ 
-                          flexGrow: 1, 
-                          background: 'rgba(255, 255, 255, 0.5)', 
-                          border: '1px solid rgba(0, 0, 0, 0.06)', 
-                          borderRadius: '8px', 
-                          padding: '8px 12px', 
-                          fontSize: '0.85rem', 
-                          outline: 'none',
-                          color: 'var(--text-primary)'
-                        }}
+                        style={{ flexGrow: 1, background: 'rgba(255,255,255,0.5)', border: '1px solid rgba(0,0,0,0.06)',
+                          borderRadius: '8px', padding: '8px 12px', fontSize: '0.85rem', outline: 'none', color: 'var(--text-primary)' }}
                       />
-                      <button 
+                      <button
                         onClick={handleSendEmail}
                         disabled={!email || emailStatus === 'Sending...'}
-                        style={{ 
-                          background: 'var(--dark-bg)', 
-                          color: 'var(--dark-text)', 
-                          border: 'none', 
-                          borderRadius: '8px', 
-                          padding: '8px 16px', 
-                          fontSize: '0.85rem', 
-                          fontWeight: '700', 
-                          cursor: 'pointer' 
-                        }}
+                        style={{ background: 'var(--dark-bg)', color: 'var(--dark-text)', border: 'none',
+                          borderRadius: '8px', padding: '8px 16px', fontSize: '0.85rem', fontWeight: '700', cursor: 'pointer' }}
                       >
                         {emailStatus === 'Sending...' ? 'Sending...' : 'Send'}
                       </button>
                     </div>
                     {emailStatus && (
-                      <p style={{ fontSize: '0.75rem', color: emailStatus.includes('Error') || emailStatus.includes('failed') ? 'var(--status-fake)' : 'var(--status-real)', marginTop: '6px', fontWeight: '600' }}>
+                      <p style={{ fontSize: '0.75rem', marginTop: '6px', fontWeight: '600',
+                        color: emailStatus.includes('Error') || emailStatus.includes('failed') ? 'var(--status-fake)' : 'var(--status-real)' }}>
                         {emailStatus}
                       </p>
                     )}
@@ -620,15 +628,14 @@ function App() {
                 </div>
               </div>
 
-              {/* Ongoing Projects Trends Card */}
+              {/* Live Stats Card */}
               <div className="trends-card glass-card">
                 <div className="card-header">
                   <h3>Model Accuracy Trend</h3>
                   <span className="trend-percentage">91.0%</span>
                 </div>
                 <p className="trend-desc">General validation performance compared to baseline dataset.</p>
-                
-                {/* SVG Trend Graph */}
+
                 <div className="svg-container">
                   <svg viewBox="0 0 100 30" width="100%" height="80">
                     <defs>
@@ -637,22 +644,14 @@ function App() {
                         <stop offset="100%" stopColor="var(--accent-blue)" stopOpacity="0" />
                       </linearGradient>
                     </defs>
-                    <path 
-                      d="M 0 25 Q 20 10 40 18 T 80 5 T 100 12" 
-                      fill="none" 
-                      stroke="var(--accent-blue)" 
-                      strokeWidth="1.5"
-                    />
-                    <path 
-                      d="M 0 25 Q 20 10 40 18 T 80 5 T 100 12 L 100 30 L 0 30 Z" 
-                      fill="url(#gradient)"
-                    />
+                    <path d="M 0 25 Q 20 10 40 18 T 80 5 T 100 12" fill="none" stroke="var(--accent-blue)" strokeWidth="1.5" />
+                    <path d="M 0 25 Q 20 10 40 18 T 80 5 T 100 12 L 100 30 L 0 30 Z" fill="url(#gradient)" />
                   </svg>
                 </div>
 
                 <div className="stats-breakdown">
                   <div className="stat-item">
-                    <span className="label">Real Accuracy</span>
+                    <span className="label">LogReg Accuracy</span>
                     <span className="val">90.8%</span>
                   </div>
                   <div className="stat-item">
@@ -660,8 +659,16 @@ function App() {
                     <span className="val">85.7%</span>
                   </div>
                   <div className="stat-item">
-                    <span className="label">Database Records</span>
-                    <span className="val">{totalScans}</span>
+                    <span className="label">Total Scans</span>
+                    <span className="val">{stats.total}</span>
+                  </div>
+                  <div className="stat-item">
+                    <span className="label">Fake Ratio</span>
+                    <span className="val">{stats.fake_ratio}%</span>
+                  </div>
+                  <div className="stat-item">
+                    <span className="label">Avg Confidence</span>
+                    <span className="val">{stats.avg_confidence}%</span>
                   </div>
                 </div>
               </div>
@@ -832,32 +839,32 @@ function App() {
           </div>
         )}
 
-        {/* Metrics Row (Total Users, Dynamics etc from image) */}
+        {/* Metrics Row — live data from /stats endpoint */}
         <section className="dashboard-footer-metrics dark-card">
           <div className="metrics-summary">
             <h3>Analytics Breakdown</h3>
-            <span className="badge">Realtime logs</span>
+            <span className="badge">Live from API</span>
           </div>
           <div className="metrics-grid">
             <div className="metric-col">
               <span className="label">Total Scans</span>
-              <span className="val">{totalScans}</span>
+              <span className="val">{stats.total}</span>
             </div>
             <div className="metric-col">
               <span className="label">Real Detections</span>
-              <span className="val">{realScans}</span>
+              <span className="val">{stats.real}</span>
             </div>
             <div className="metric-col">
               <span className="label">Fake Detections</span>
-              <span className="val">{fakeScans}</span>
+              <span className="val">{stats.fake}</span>
             </div>
             <div className="metric-col">
               <span className="label">Fake Ratio</span>
-              <span className="val">{fakeRatio}%</span>
+              <span className="val">{stats.fake_ratio}%</span>
             </div>
             <div className="metric-col">
               <span className="label">Avg Confidence</span>
-              <span className="val">{avgConfidence}%</span>
+              <span className="val">{stats.avg_confidence}%</span>
             </div>
           </div>
         </section>
