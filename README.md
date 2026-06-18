@@ -44,9 +44,9 @@ TruthLens is a full-stack AI-powered fake news detection system that goes beyond
 | 🧠 **Gemini Explanations** | Generates professional fact-check reports using Google Gemini 1.5 Flash |
 | 📊 **Confidence Scoring** | Displays FAKE/REAL probability bars with blended web+model confidence |
 | 📬 **Email Reports** | Send verification reports to any inbox via Resend API |
-| 📁 **Analysis History** | Persistent SQLite storage with searchable scan archive |
+| 📁 **Analysis History** | Persistent SQLite storage with timezone-aware local time formatting |
 | ⚡ **Async Pipeline** | Non-blocking web scraping via ThreadPoolExecutor |
-| 🎨 **Premium Dark UI** | Glassmorphic design with looping background video and micro-animations |
+| 🎨 **Premium Dark UI** | Glassmorphic design with looping background video, ticking real-time clock, and micro-animations |
 
 ---
 
