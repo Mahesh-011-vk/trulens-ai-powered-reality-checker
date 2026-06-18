@@ -240,7 +240,12 @@ async def analyze_news(request: NewsRequest):
             raise HTTPException(status_code=500, detail=f"Serverless classification failed: {e}")
 
     # ── Step 1: Model Inference ────────────────────────────────────────────
-    if model_type == "cnn":
+    effective_model_type = model_type
+    if effective_model_type == "ml" and model is None and cnn_model is not None:
+        print("[Analyze] Classical ML model not loaded. Falling back to CNN model.")
+        effective_model_type = "cnn"
+
+    if effective_model_type == "cnn":
         if cnn_model is None or cnn_processor is None:
             raise HTTPException(
                 status_code=503,
