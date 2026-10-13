@@ -21,7 +21,7 @@
 
 ---
 
-## 🔍 What is TruthLens?
+## 🔍 What is TruLens?
 
 TruthLens is a full-stack AI-powered fake news detection system that goes beyond static ML models. It combines:
 
